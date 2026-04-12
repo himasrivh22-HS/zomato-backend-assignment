@@ -1,74 +1,104 @@
-# Zomato Backend Assignment
+# TaskFlow Backend (Go + PostgreSQL)
 
-##  Overview
-This project is a backend system built using Go (Golang) and PostgreSQL.  
-It supports user authentication, project management, and task management with secure JWT-based authorization.
+## Overview
 
----
-
-##  Features
-- User Registration & Login
-- Password hashing using bcrypt
-- JWT-based authentication
-- Protected APIs using middleware
-- Project management APIs
-- Task management APIs
-- PostgreSQL database integration
-- Docker support
+This project is a backend service for a task management system built using Go (Golang) and PostgreSQL.
+It allows users to register, log in, create projects, and manage tasks within those projects.
 
 ---
 
 ## Tech Stack
-- Go (Golang)
-- PostgreSQL
-- Docker
-- JWT
+
+* Go (Golang)
+* PostgreSQL
+* Docker
+* JWT Authentication
+* Chi Router
 
 ---
 
-## Setup Instructions
+## Features
 
-### 1. Start Database
+* User Registration & Login
+* Password hashing using bcrypt
+* JWT-based authentication
+* Protected APIs using middleware
+* Project CRUD operations
+* Task CRUD operations
+* Tasks linked to projects
+* RESTful API design
 
-### 2. Run Server
+---
+
+## Running Locally
+
+```bash
+git clone https://github.com/himasrivh22-HS/zomato-backend-assignment
+cd zomato-backend-assignment
+go run cmd/server/main.go
+```
+
+Server runs at:
+http://localhost:8080
 
 ---
 
 ## Authentication
+
 All endpoints (except register/login) require:
+
+Authorization: Bearer <your_token>
 
 ---
 
 ## API Endpoints
 
 ### Auth
-- POST /auth/register  
-- POST /auth/login  
+
+* POST /auth/register
+* POST /auth/login
 
 ### Projects
-- POST /projects  
+
+* GET /projects
+* POST /projects
+* GET /projects/{id}
+* PATCH /projects/{id}
+* DELETE /projects/{id}
 
 ### Tasks
-- POST /tasks  
-- GET /tasks/list  
-- POST /tasks/update?id=  
-- POST /tasks/delete?id=  
+
+* GET /projects/{id}/tasks
+* POST /projects/{id}/tasks
+* PATCH /tasks/{id}
+* DELETE /tasks/{id}
 
 ---
 
-##  Testing
-You can test APIs using:
-- Postman
-- PowerShell (Invoke-RestMethod)
+## Example Request
+
+### Create Project
+
+```json
+{
+  "name": "Test Project",
+  "description": "Demo project",
+  "owner_id": "user-id"
+}
+```
 
 ---
 
-## Notes
-- Passwords are securely hashed using bcrypt  
-- JWT tokens are used for authentication  
-- Tasks are linked to projects using project_id  
+## What I Would Improve
+
+* Add pagination for large data
+* Add filtering (status, assignee)
+* Add input validation
+* Add unit and integration tests
+* Improve error handling
 
 ---
 
-##  Repository
+## Repository
+
 https://github.com/himasrivh22-HS/zomato-backend-assignment

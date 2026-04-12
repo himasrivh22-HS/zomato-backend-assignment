@@ -8,6 +8,7 @@ import (
 
 	"zomato-backend-assignment/internal/model"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -15,9 +16,12 @@ type TaskHandler struct {
 	DB *sql.DB
 }
 
-// CREATE TASK
+// CREATE TASK (POST /projects/{id}/tasks)
 func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var task model.Task
+
+	// Get project ID from URL
+	projectID := chi.URLParam(r, "id")
 
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
@@ -26,6 +30,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	task.ID = uuid.New().String()
+	task.ProjectID = projectID // 
 
 	query := `INSERT INTO tasks 
 	(id, title, description, status, priority, project_id, assignee_id) 
@@ -33,42 +38,46 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	var assignee interface{}
 
-if task.AssigneeID == "" {
-	assignee = nil   
-} else {
-	assignee = task.AssigneeID
-}
+	if task.AssigneeID == "" {
+		assignee = nil
+	} else {
+		assignee = task.AssigneeID
+	}
 
-_, err = h.DB.Exec(query,
-	task.ID,
-	task.Title,
-	task.Description,
-	task.Status,
-	task.Priority,
-	task.ProjectID,
-	assignee,
-)
+	_, err = h.DB.Exec(query,
+		task.ID,
+		task.Title,
+		task.Description,
+		task.Status,
+		task.Priority,
+		task.ProjectID,
+		assignee,
+	)
 
 	if err != nil {
-	fmt.Println("TASK DB ERROR:", err)  
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-	return
-}
+		fmt.Println("TASK DB ERROR:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	json.NewEncoder(w).Encode(task)
 }
 
-// GET TASKS
-// GET TASKS
+// GET TASKS (GET /projects/{id}/tasks)
 func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query("SELECT id, title, description, status, priority, project_id, assignee_id FROM tasks")
+	projectID := chi.URLParam(r, "id")
+
+	query := `SELECT id, title, description, status, priority, project_id, assignee_id 
+	          FROM tasks WHERE project_id=$1`
+
+	rows, err := h.DB.Query(query, projectID)
 	if err != nil {
 		http.Error(w, "Failed to fetch tasks", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var tasks []model.Task
+	tasks := make([]model.Task, 0)
 
 	for rows.Next() {
 		var task model.Task
@@ -100,9 +109,9 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tasks)
 }
 
-// UPDATE TASK
+// UPDATE TASK (PATCH /tasks/{id})
 func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
+	id := chi.URLParam(r, "id")
 
 	var task model.Task
 	err := json.NewDecoder(r.Body).Decode(&task)
@@ -111,7 +120,9 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `UPDATE tasks SET title=$1, description=$2, status=$3, priority=$4 WHERE id=$5`
+	query := `UPDATE tasks 
+	SET title=$1, description=$2, status=$3, priority=$4 
+	WHERE id=$5`
 
 	_, err = h.DB.Exec(query,
 		task.Title,
@@ -126,12 +137,12 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("Task updated successfully ✅"))
+	w.Write([]byte("Task updated successfully"))
 }
 
-// DELETE TASK
+// DELETE TASK (DELETE /tasks/{id})
 func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
+	id := chi.URLParam(r, "id")
 
 	query := "DELETE FROM tasks WHERE id=$1"
 
@@ -141,5 +152,5 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("Task deleted successfully "))
+	w.Write([]byte("Task deleted successfully"))
 }

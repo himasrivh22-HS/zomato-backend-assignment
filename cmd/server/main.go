@@ -3,9 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
-
-	"zomato-backend-assignment/internal/config"
 	"zomato-backend-assignment/internal/handler"
+	"zomato-backend-assignment/internal/config"
 	"zomato-backend-assignment/internal/middleware"
 )
 
@@ -33,7 +32,8 @@ func main() {
 	fmt.Println("Connected to database ")
 	fmt.Println("Server running on port 8080 ")
 
-	err = http.ListenAndServe(":8080", nil)
+	router := handler.SetupRoutes(db)
+    http.ListenAndServe(":8080", router)
 	if err != nil {
 		panic(err)
 	}

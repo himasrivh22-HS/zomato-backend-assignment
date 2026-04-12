@@ -46,7 +46,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("User registered successfully"))
+	json.NewEncoder(w).Encode(user)
 }
 
 // LOGIN

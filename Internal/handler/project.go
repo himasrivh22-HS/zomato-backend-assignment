@@ -1,13 +1,14 @@
 package handler
 
 import (
-	"fmt"
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"fmt"
 
 	"zomato-backend-assignment/internal/model"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -26,16 +27,106 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	project.ID = uuid.New().String()
-	project.OwnerID = uuid.New().String()
 
-	query := "INSERT INTO projects (id, name, description, owner_id) VALUES ($1,$2,$3,$4)"
+	query := `INSERT INTO projects (id, name, description, owner_id)
+	          VALUES ($1, $2, $3, $4)`
 
-	_, err = h.DB.Exec(query, project.ID, project.Name, project.Description, project.OwnerID)
-if err != nil {
-	fmt.Println("PROJECT DB ERROR:", err)  
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-	return
-}
+	_, err = h.DB.Exec(query,
+		project.ID,
+		project.Name,
+		project.Description,
+		project.OwnerID,
+	)
+
+	if err != nil {
+		fmt.Println("PROJECT DB ERROR:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	json.NewEncoder(w).Encode(project)
+}
+
+// GET ALL PROJECTS
+func (h *ProjectHandler) GetProjects(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.DB.Query("SELECT id, name, description, owner_id FROM projects")
+	if err != nil {
+		http.Error(w, "Failed to fetch projects", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var projects []model.Project
+
+	for rows.Next() {
+		var p model.Project
+		err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.OwnerID)
+		if err != nil {
+			http.Error(w, "Error reading projects", http.StatusInternalServerError)
+			return
+		}
+		projects = append(projects, p)
+	}
+
+	json.NewEncoder(w).Encode(projects)
+}
+
+// GET PROJECT BY ID
+func (h *ProjectHandler) GetProjectByID(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var p model.Project
+
+	query := "SELECT id, name, description, owner_id FROM projects WHERE id=$1"
+
+	err := h.DB.QueryRow(query, id).Scan(
+		&p.ID,
+		&p.Name,
+		&p.Description,
+		&p.OwnerID,
+	)
+
+	if err != nil {
+		http.Error(w, "Project not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(p)
+}
+
+// UPDATE PROJECT
+func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var p model.Project
+	err := json.NewDecoder(r.Body).Decode(&p)
+	if err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	query := `UPDATE projects SET name=$1, description=$2 WHERE id=$3`
+
+	_, err = h.DB.Exec(query, p.Name, p.Description, id)
+	if err != nil {
+		http.Error(w, "Failed to update project", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("Project updated"))
+}
+
+// DELETE PROJECT
+func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	query := "DELETE FROM projects WHERE id=$1"
+
+	_, err := h.DB.Exec(query, id)
+	if err != nil {
+		http.Error(w, "Failed to delete project", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("Project deleted"))
 }
