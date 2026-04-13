@@ -16,6 +16,8 @@ FROM debian:bookworm-slim
 WORKDIR /app
 
 COPY --from=builder /go/src/zomato-backend-assignment/main .
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
 
 EXPOSE 8080
 

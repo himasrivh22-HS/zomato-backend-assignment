@@ -120,13 +120,31 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	query := "DELETE FROM projects WHERE id=$1"
+	// Get logged-in user
+	userID := r.Context().Value("user_id").(string)
 
-	_, err := h.DB.Exec(query, id)
+	//  Check who owns the project
+	var ownerID string
+	err := h.DB.QueryRow("SELECT owner_id FROM projects WHERE id=$1", id).Scan(&ownerID)
+	if err != nil {
+		http.Error(w, "Project not found", http.StatusNotFound)
+		return
+	}
+
+	//  Authorization check
+	if ownerID != userID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Delete project
+	query := "DELETE FROM projects WHERE id=$1"
+	_, err = h.DB.Exec(query, id)
 	if err != nil {
 		http.Error(w, "Failed to delete project", http.StatusInternalServerError)
 		return
 	}
 
 	w.Write([]byte("Project deleted"))
+}
 }
