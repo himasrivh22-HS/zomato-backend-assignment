@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 
 	"zomato-backend-assignment/internal/model"
@@ -23,13 +22,13 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	projectID := chi.URLParam(r, "id")
 	if projectID == "" {
-		http.Error(w, "project id is required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "project id is required")
 		return
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
@@ -59,48 +58,41 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		fmt.Println("TASK DB ERROR:", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(task)
 }
 
 // ================= GET TASKS =================
 func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
-	log.Println("GetTasks API HIT")
-
 	projectID := chi.URLParam(r, "id")
-	if projectID == "" {
-		http.Error(w, "project id is required", http.StatusBadRequest)
-		return
-	}
 
 	status := r.URL.Query().Get("status")
 	assignee := r.URL.Query().Get("assignee")
 
-	query := "SELECT id, title, description, status, priority, project_id, assignee_id FROM tasks WHERE project_id = $1"
-
+	query := "SELECT id, title, description, status, priority, project_id, assignee_id FROM tasks WHERE project_id=$1"
 	args := []interface{}{projectID}
+
 	argIndex := 2
 
 	if status != "" {
-		query += " AND status = $" + fmt.Sprint(argIndex)
+		query += fmt.Sprintf(" AND status=$%d", argIndex)
 		args = append(args, status)
 		argIndex++
 	}
 
 	if assignee != "" {
-		query += " AND assignee_id = $" + fmt.Sprint(argIndex)
+		query += fmt.Sprintf(" AND assignee_id=$%d", argIndex)
 		args = append(args, assignee)
 		argIndex++
 	}
 
 	rows, err := h.DB.Query(query, args...)
 	if err != nil {
-		log.Println("DB ERROR:", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		fmt.Println("QUERY ERROR:", err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch tasks")
 		return
 	}
 	defer rows.Close()
@@ -108,34 +100,40 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	var tasks []model.Task
 
 	for rows.Next() {
-		var task model.Task
+		var t model.Task
 		var assigneeID sql.NullString
+		var priority sql.NullString
+		var description sql.NullString
 
 		err := rows.Scan(
-			&task.ID,
-			&task.Title,
-			&task.Description,
-			&task.Status,
-			&task.Priority,
-			&task.ProjectID,
+			&t.ID,
+			&t.Title,
+			&description,
+			&t.Status,
+			&priority,
+			&t.ProjectID,
 			&assigneeID,
 		)
 		if err != nil {
-			http.Error(w, "error reading tasks", http.StatusInternalServerError)
+			fmt.Println("SCAN ERROR:", err)
+			writeError(w, http.StatusInternalServerError, "error reading tasks")
 			return
 		}
 
+		if description.Valid {
+			t.Description = description.String
+		}
 		if assigneeID.Valid {
-			task.AssigneeID = assigneeID.String
+			t.AssigneeID = assigneeID.String
+		}
+		if priority.Valid {
+			t.Priority = priority.String
 		}
 
-		tasks = append(tasks, task)
+		tasks = append(tasks, t)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"tasks": tasks,
-	})
+	json.NewEncoder(w).Encode(tasks)
 }
 
 // ================= UPDATE TASK =================
@@ -145,18 +143,16 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	var task model.Task
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
-	//  Get user safely
 	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	//  Check ownership
 	var projectOwnerID, assigneeID sql.NullString
 
 	err = h.DB.QueryRow(`
@@ -167,12 +163,12 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	`, id).Scan(&projectOwnerID, &assigneeID)
 
 	if err != nil {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "task not found")
 		return
 	}
 
 	if userID != projectOwnerID.String && (!assigneeID.Valid || userID != assigneeID.String) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
@@ -189,50 +185,47 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		http.Error(w, "Failed to update task", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to update task")
 		return
 	}
 
-	w.Write([]byte("Task updated successfully"))
+	w.Write([]byte("task updated successfully"))
 }
 
 // ================= DELETE TASK =================
 func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	//  Get user safely
 	userID, ok := r.Context().Value("user_id").(string)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	//  Check ownership
-	var projectOwnerID, assigneeID sql.NullString
+	var projectOwnerID, creatorID sql.NullString
 
 	err := h.DB.QueryRow(`
-		SELECT p.owner_id, t.assignee_id
+		SELECT p.owner_id, t.creator_id
 		FROM tasks t
 		JOIN projects p ON t.project_id = p.id
 		WHERE t.id = $1
-	`, id).Scan(&projectOwnerID, &assigneeID)
+	`, id).Scan(&projectOwnerID, &creatorID)
 
 	if err != nil {
-		http.Error(w, "Task not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "task not found")
 		return
 	}
 
-	if userID != projectOwnerID.String && (!assigneeID.Valid || userID != assigneeID.String) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+	if userID != projectOwnerID.String && (!creatorID.Valid || userID != creatorID.String) {
+		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 
-	query := "DELETE FROM tasks WHERE id=$1"
-	_, err = h.DB.Exec(query, id)
+	_, err = h.DB.Exec("DELETE FROM tasks WHERE id=$1", id)
 	if err != nil {
-		http.Error(w, "Failed to delete task", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to delete task")
 		return
 	}
 
-	w.Write([]byte("Task deleted successfully"))
+	w.WriteHeader(http.StatusNoContent) 
 }

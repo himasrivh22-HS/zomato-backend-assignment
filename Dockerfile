@@ -1,24 +1,30 @@
-# Build stage
+# ---------- BUILD STAGE ----------
 FROM golang:1.22 AS builder
 
-WORKDIR /go/src/zomato-backend-assignment
+WORKDIR /app
 
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . /go/src/zomato-backend-assignment
+COPY . .
 
-RUN go build -o main ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o app ./cmd/server/main.go
 
-# Run stage
+
+# ---------- RUN STAGE ----------
 FROM debian:bookworm-slim
 
-WORKDIR /app
+WORKDIR /root/
 
-COPY --from=builder /go/src/zomato-backend-assignment/main .
+# install required tools
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
+# copy binary
+COPY --from=builder /app/app .
+
+# copy migrations
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8080
 
-CMD ["./main"]
+CMD ["./app"]
