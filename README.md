@@ -1,104 +1,210 @@
-# TaskFlow Backend (Go + PostgreSQL)
+# TaskFlow Backend API
+
+A minimal yet production-style backend system for managing users, projects, and tasks with authentication.
+
+---
 
 ## Overview
 
-This project is a backend service for a task management system built using Go (Golang) and PostgreSQL.
-It allows users to register, log in, create projects, and manage tasks within those projects.
+TaskFlow is a RESTful backend API that allows users to:
+
+* Register and authenticate using JWT
+* Create and manage projects
+* Add and manage tasks within projects
+* Assign tasks and track their status
+
+Built with **Go**, **PostgreSQL**, and **Chi router**, focusing on clean architecture and real-world backend practices.
 
 ---
 
 ## Tech Stack
 
-* Go (Golang)
-* PostgreSQL
-* Docker
-* JWT Authentication
-* Chi Router
+* **Language:** Go (Golang)
+* **Router:** Chi
+* **Database:** PostgreSQL
+* **Authentication:** JWT + bcrypt
+* **Environment Management:** godotenv
 
 ---
 
-## Features
+## Architecture Decisions
 
-* User Registration & Login
-* Password hashing using bcrypt
-* JWT-based authentication
-* Protected APIs using middleware
-* Project CRUD operations
-* Task CRUD operations
-* Tasks linked to projects
-* RESTful API design
+* Used **Chi router** for lightweight and flexible routing
+* Implemented **JWT authentication** for stateless session handling
+* Used **PostgreSQL** for strong relational data consistency
+* Structured project into:
+
+  * `handler` → request handling
+  * `model` → data structures
+  * `middleware` → authentication logic
+  * `config` → database setup
+* Avoided ORM to maintain full control over SQL queries
 
 ---
 
 ## Running Locally
 
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/himasrivh22-HS/zomato-backend-assignment
-cd zomato-backend-assignment
+git clone https://github.com/<your-username>/taskflow-backend
+cd taskflow-backend
+```
+
+---
+
+### 2. Setup environment variables
+
+Create `.env` file:
+
+```env
+DB_URL=postgres://postgres:postgres@localhost:5432/taskflow?sslmode=disable
+JWT_SECRET=your-secret-key
+PORT=8080
+```
+
+---
+
+### 3. Install dependencies
+
+```bash
+go mod tidy
+```
+
+---
+
+### 4. Run the server
+
+```bash
 go run cmd/server/main.go
 ```
 
-Server runs at:
+---
+
+### 5. Server runs at:
+
+```plaintext
 http://localhost:8080
+```
 
 ---
 
-## Authentication
+##  Authentication
 
-All endpoints (except register/login) require:
+### Register
 
-Authorization: Bearer <your_token>
+```
+POST /auth/register
+```
 
----
+### Login
 
-## API Endpoints
+```
+POST /auth/login
+```
 
-### Auth
-
-* POST /auth/register
-* POST /auth/login
-
-### Projects
-
-* GET /projects
-* POST /projects
-* GET /projects/{id}
-* PATCH /projects/{id}
-* DELETE /projects/{id}
-
-### Tasks
-
-* GET /projects/{id}/tasks
-* POST /projects/{id}/tasks
-* PATCH /tasks/{id}
-* DELETE /tasks/{id}
-
----
-
-## Example Request
-
-### Create Project
+Returns JWT token:
 
 ```json
 {
-  "name": "Test Project",
-  "description": "Demo project",
-  "owner_id": "user-id"
+  "token": "<jwt-token>",
+  "user": {
+    "id": "...",
+    "name": "...",
+    "email": "..."
+  }
 }
 ```
 
 ---
 
-## What I Would Improve
+##  API Endpoints
 
-* Add pagination for large data
-* Add filtering (status, assignee)
-* Add input validation
-* Add unit and integration tests
-* Improve error handling
+### Projects
+
+* `GET /projects` → list projects
+* `POST /projects` → create project
+* `GET /projects/{id}` → get project details
+* `PATCH /projects/{id}` → update project
+* `DELETE /projects/{id}` → delete project
 
 ---
 
-## Repository
+### Tasks
 
-https://github.com/himasrivh22-HS/zomato-backend-assignment
+* `GET /projects/{id}/tasks` → list tasks
+  Supports filters:
+
+  ```
+  ?status=todo
+  ?assignee=<user_id>
+  ```
+
+* `POST /projects/{id}/tasks` → create task
+
+* `PATCH /tasks/{id}` → update task
+
+* `DELETE /tasks/{id}` → delete task
+
+---
+
+##  Error Handling
+
+* `400` → validation errors
+* `401` → unauthorized
+* `403` → forbidden
+* `404` → not found
+
+Example:
+
+```json
+{
+  "error": "validation failed",
+  "fields": {
+    "email": "is required"
+  }
+}
+```
+
+---
+
+## Test Credentials
+
+
+Email: test@example.com
+Password: password123
+```
+
+---
+
+## Features
+
+* Secure password hashing (bcrypt)
+* JWT-based authentication
+* RESTful API design
+* Filtering support for tasks
+* Clean and modular code structure
+
+---
+
+## What I’d Improve With More Time
+
+* Add pagination for large datasets
+* Implement integration tests
+* Add Docker support for full environment setup
+* Add logging (zap/logrus)
+* Role-based access control (RBAC)
+
+---
+
+## Submission Notes
+
+This project focuses on:
+
+* clean architecture
+* correct API design
+* real-world backend patterns
+
+All core requirements are implemented and tested locally.
+
+---

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"log"
 
 	"zomato-backend-assignment/internal/model"
 
@@ -65,23 +66,48 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 // GET TASKS (GET /projects/{id}/tasks)
 func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
+	log.Println("GetTasks API HIT")
 	projectID := chi.URLParam(r, "id")
+	if projectID == "" {
+	respondError(w, http.StatusBadRequest, "project id is required")
+	return
+}
 
-	query := `SELECT id, title, description, status, priority, project_id, assignee_id 
-	          FROM tasks WHERE project_id=$1`
+	// Filters
+	status := r.URL.Query().Get("status")
+	assignee := r.URL.Query().Get("assignee")
 
-	rows, err := h.DB.Query(query, projectID)
+	//  Base query
+	query := "SELECT id, title, description, status, priority, project_id, assignee_id FROM tasks WHERE project_id = $1"
+
+	args := []interface{}{projectID}
+	argIndex := 2
+
+	if status != "" {
+		query += " AND status = $" + fmt.Sprint(argIndex)
+		args = append(args, status)
+		argIndex++
+	}
+
+	if assignee != "" {
+		query += " AND assignee_id = $" + fmt.Sprint(argIndex)
+		args = append(args, assignee)
+		argIndex++
+	}
+
+	rows, err := h.DB.Query(query, args...)
 	if err != nil {
-		http.Error(w, "Failed to fetch tasks", http.StatusInternalServerError)
+		log.Println("DB ERROR:", err)
+		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	defer rows.Close()
 
-	tasks := make([]model.Task, 0)
+	var tasks []model.Task
 
 	for rows.Next() {
 		var task model.Task
-		var assignee sql.NullString
+		var assigneeID sql.NullString
 
 		err := rows.Scan(
 			&task.ID,
@@ -90,23 +116,24 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 			&task.Status,
 			&task.Priority,
 			&task.ProjectID,
-			&assignee,
+			&assigneeID,
 		)
 		if err != nil {
-			http.Error(w, "Error reading tasks", http.StatusInternalServerError)
+			respondError(w, http.StatusInternalServerError, "error reading tasks")
 			return
 		}
 
-		if assignee.Valid {
-			task.AssigneeID = assignee.String
-		} else {
-			task.AssigneeID = ""
+		if assigneeID.Valid {
+			task.AssigneeID = assigneeID.String
 		}
 
 		tasks = append(tasks, task)
 	}
 
-	json.NewEncoder(w).Encode(tasks)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tasks": tasks,
+	})
 }
 
 // UPDATE TASK (PATCH /tasks/{id})
