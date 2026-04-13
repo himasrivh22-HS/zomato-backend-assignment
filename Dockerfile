@@ -1,5 +1,5 @@
 # ---------- BUILD STAGE ----------
-FROM golang:1.22 AS builder
+FROM golang:1.24 AS builder
 
 WORKDIR /app
 
@@ -10,19 +10,17 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o app ./cmd/server/main.go
 
+RUN chmod +x app
 
 # ---------- RUN STAGE ----------
-FROM debian:bookworm-slim
+FROM alpine:latest
 
 WORKDIR /root/
 
-# install required tools
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# install certs
+RUN apk add --no-cache ca-certificates
 
-# copy binary
 COPY --from=builder /app/app .
-
-# copy migrations
 COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8080

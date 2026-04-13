@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"zomato-backend-assignment/internal/model"
 
@@ -18,11 +19,20 @@ type TaskHandler struct {
 
 // ================= CREATE TASK =================
 func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	var task model.Task
 
 	projectID := chi.URLParam(r, "id")
 	if projectID == "" {
 		writeError(w, http.StatusBadRequest, "project id is required")
+		return
+	}
+
+	// Get logged-in user (creator)
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -32,8 +42,19 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ✅ VALIDATION
+	if task.Title == "" {
+		writeValidationError(w, map[string]string{"title": "is required"})
+		return
+	}
+	if task.Status == "" {
+		writeValidationError(w, map[string]string{"status": "is required"})
+		return
+	}
+
 	task.ID = uuid.New().String()
 	task.ProjectID = projectID
+	task.CreatorID = userID
 
 	var assignee interface{}
 	if task.AssigneeID == "" {
@@ -43,8 +64,8 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `INSERT INTO tasks 
-	(id, title, description, status, priority, project_id, assignee_id) 
-	VALUES ($1,$2,$3,$4,$5,$6,$7)`
+	(id, title, description, status, priority, project_id, assignee_id, creator_id, due_date, created_at, updated_at) 
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`
 
 	_, err = h.DB.Exec(query,
 		task.ID,
@@ -54,6 +75,8 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		task.Priority,
 		task.ProjectID,
 		assignee,
+		task.CreatorID,
+		task.DueDate,
 	)
 
 	if err != nil {
@@ -61,12 +84,15 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-    w.WriteHeader(http.StatusCreated)
+
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(task)
 }
 
 // ================= GET TASKS =================
 func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	projectID := chi.URLParam(r, "id")
 
 	status := r.URL.Query().Get("status")
@@ -78,20 +104,19 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	argIndex := 2
 
 	if status != "" {
-		query += fmt.Sprintf(" AND status=$%d", argIndex)
+		query += " AND status=$" + strconv.Itoa(argIndex)
 		args = append(args, status)
 		argIndex++
 	}
 
 	if assignee != "" {
-		query += fmt.Sprintf(" AND assignee_id=$%d", argIndex)
+		query += " AND assignee_id=$" + strconv.Itoa(argIndex)
 		args = append(args, assignee)
 		argIndex++
 	}
 
 	rows, err := h.DB.Query(query, args...)
 	if err != nil {
-		fmt.Println("QUERY ERROR:", err)
 		writeError(w, http.StatusInternalServerError, "failed to fetch tasks")
 		return
 	}
@@ -115,7 +140,6 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 			&assigneeID,
 		)
 		if err != nil {
-			fmt.Println("SCAN ERROR:", err)
 			writeError(w, http.StatusInternalServerError, "error reading tasks")
 			return
 		}
@@ -133,17 +157,33 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 		tasks = append(tasks, t)
 	}
 
-	json.NewEncoder(w).Encode(tasks)
+	// check row error
+	if err = rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "error reading rows")
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tasks": tasks,
+	})
 }
 
 // ================= UPDATE TASK =================
 func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	id := chi.URLParam(r, "id")
 
 	var task model.Task
 	err := json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	// ✅ validation
+	if task.Title == "" {
+		writeValidationError(w, map[string]string{"title": "is required"})
 		return
 	}
 
@@ -173,7 +213,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `UPDATE tasks 
-	SET title=$1, description=$2, status=$3, priority=$4 
+	SET title=$1, description=$2, status=$3, priority=$4, updated_at=NOW() 
 	WHERE id=$5`
 
 	_, err = h.DB.Exec(query,
@@ -189,7 +229,9 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("task updated successfully"))
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "task updated successfully",
+	})
 }
 
 // ================= DELETE TASK =================
@@ -227,5 +269,5 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent) 
+	w.WriteHeader(http.StatusNoContent)
 }
