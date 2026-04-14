@@ -52,13 +52,24 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-    w.WriteHeader(http.StatusCreated)
+
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(project)
 }
 
-// ================= GET ALL PROJECTS =================
+// ================= GET ALL PROJECTS (FIXED) =================
 func (h *ProjectHandler) GetProjects(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB.Query("SELECT id, name, description, owner_id FROM projects")
+
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	rows, err := h.DB.Query(
+		"SELECT id, name, description, owner_id FROM projects WHERE owner_id=$1",
+		userID,
+	)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch projects")
 		return
@@ -80,23 +91,37 @@ func (h *ProjectHandler) GetProjects(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(projects)
 }
 
-// ================= GET PROJECT BY ID =================
+// ================= GET PROJECT BY ID (FIXED) =================
 func (h *ProjectHandler) GetProjectByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var p model.Project
 
-	err := h.DB.QueryRow("SELECT id, name, description, owner_id FROM projects WHERE id=$1", id).
-		Scan(&p.ID, &p.Name, &p.Description, &p.OwnerID)
+	err := h.DB.QueryRow(
+		"SELECT id, name, description, owner_id FROM projects WHERE id=$1 AND owner_id=$2",
+		id,
+		userID,
+	).Scan(&p.ID, &p.Name, &p.Description, &p.OwnerID)
 
 	if err != nil {
 		writeError(w, http.StatusNotFound, "project not found")
 		return
 	}
 
+	// Fetch tasks securely
 	rows, err := h.DB.Query(`
 		SELECT id, title, description, status, priority, project_id, assignee_id 
-		FROM tasks WHERE project_id=$1`, id)
+		FROM tasks 
+		WHERE project_id=$1 AND project_id IN (
+			SELECT id FROM projects WHERE owner_id=$2
+		)`, id, userID)
+
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch tasks")
 		return
@@ -175,8 +200,10 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.DB.Exec("UPDATE projects SET name=$1, description=$2 WHERE id=$3",
-		p.Name, p.Description, id)
+	_, err = h.DB.Exec(
+		"UPDATE projects SET name=$1, description=$2 WHERE id=$3",
+		p.Name, p.Description, id,
+	)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update project")
@@ -214,5 +241,5 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent) 
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"zomato-backend-assignment/internal/model"
@@ -18,7 +19,6 @@ import (
 type AuthHandler struct {
 	DB *sql.DB
 }
-
 
 // ===== REGISTER =====
 
@@ -38,6 +38,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	if user.Email == "" {
 		errors["email"] = "is required"
+	}
+	if user.Email != "" && !strings.Contains(user.Email, "@") { 
+		errors["email"] = "invalid format"
 	}
 	if user.Password == "" {
 		errors["password"] = "is required"
@@ -143,6 +146,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": storedUser.ID,
 		"email":   storedUser.Email,

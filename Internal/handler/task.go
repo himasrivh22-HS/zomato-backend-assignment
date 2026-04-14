@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"zomato-backend-assignment/internal/middleware"
 	"zomato-backend-assignment/internal/model"
 
 	"github.com/go-chi/chi/v5"
@@ -29,20 +30,30 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get logged-in user (creator)
-	userID, ok := r.Context().Value("user_id").(string)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&task)
+	var exists bool
+	err := h.DB.QueryRow(
+		"SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND owner_id=$2)",
+		projectID,
+		userID,
+	).Scan(&exists)
+
+	if err != nil || !exists {
+		writeError(w, http.StatusForbidden, "invalid project access")
+		return
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
-	// ✅ VALIDATION
 	if task.Title == "" {
 		writeValidationError(w, map[string]string{"title": "is required"})
 		return
@@ -62,13 +73,13 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	} else {
 		assignee = task.AssigneeID
 	}
-	var dueDate interface{}
 
-if task.DueDate == "" {
-	dueDate = nil
-} else {
-	dueDate = task.DueDate
-}
+	var dueDate interface{}
+	if task.DueDate == "" {
+		dueDate = nil
+	} else {
+		dueDate = task.DueDate
+	}
 
 	query := `INSERT INTO tasks 
 	(id, title, description, status, priority, project_id, assignee_id, creator_id, due_date, created_at, updated_at) 
@@ -102,13 +113,25 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 
 	projectID := chi.URLParam(r, "id")
 
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	status := r.URL.Query().Get("status")
 	assignee := r.URL.Query().Get("assignee")
 
-	query := "SELECT id, title, description, status, priority, project_id, assignee_id FROM tasks WHERE project_id=$1"
-	args := []interface{}{projectID}
+	// ✅ FIX: secure base query
+	query := `
+	SELECT id, title, description, status, priority, project_id, assignee_id 
+	FROM tasks 
+	WHERE project_id=$1 AND project_id IN (
+		SELECT id FROM projects WHERE owner_id=$2
+	)`
+	args := []interface{}{projectID, userID}
 
-	argIndex := 2
+	argIndex := 3
 
 	if status != "" {
 		query += " AND status=$" + strconv.Itoa(argIndex)
@@ -133,9 +156,7 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var t model.Task
-		var assigneeID sql.NullString
-		var priority sql.NullString
-		var description sql.NullString
+		var assigneeID, priority, description sql.NullString
 
 		err := rows.Scan(
 			&t.ID,
@@ -164,17 +185,10 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 		tasks = append(tasks, t)
 	}
 
-	// check row error
-	if err = rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "error reading rows")
-		return
-	}
-
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"tasks": tasks,
 	})
 }
-
 // ================= UPDATE TASK =================
 func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -188,7 +202,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ✅ validation
+	//  validation
 	if task.Title == "" {
 		writeValidationError(w, map[string]string{"title": "is required"})
 		return
