@@ -62,6 +62,13 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	} else {
 		assignee = task.AssigneeID
 	}
+	var dueDate interface{}
+
+if task.DueDate == "" {
+	dueDate = nil
+} else {
+	dueDate = task.DueDate
+}
 
 	query := `INSERT INTO tasks 
 	(id, title, description, status, priority, project_id, assignee_id, creator_id, due_date, created_at, updated_at) 
@@ -76,7 +83,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		task.ProjectID,
 		assignee,
 		task.CreatorID,
-		task.DueDate,
+		dueDate,
 	)
 
 	if err != nil {

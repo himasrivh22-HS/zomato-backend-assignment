@@ -27,6 +27,7 @@ CREATE TABLE tasks (
     priority task_priority DEFAULT 'medium',
     project_id UUID REFERENCES projects(id),
     assignee_id UUID REFERENCES users(id),
+    creator_id UUID REFERENCES users(id),
     due_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

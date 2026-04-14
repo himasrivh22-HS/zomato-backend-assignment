@@ -8,4 +8,6 @@ type Task struct {
 	Priority    string `json:"priority"`
 	ProjectID   string `json:"project_id"`
 	AssigneeID  string `json:"assignee_id"`
+	CreatorID   string `json:"creator_id"`   
+	DueDate     string `json:"due_date"`     
 }
